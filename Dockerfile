@@ -5,7 +5,6 @@ WORKDIR /app
 # Копируем зависимости и устанавливаем их
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir fastapi uvicorn[standard]
 
 # Копируем весь бэкенд код
 COPY . .

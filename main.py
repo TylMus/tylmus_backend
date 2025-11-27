@@ -22,11 +22,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-if name == "main":
-    import uvicorn
-    print(f"🚀 Starting server on {HOST}:{PORT}")
-    uvicorn.run(app, host=HOST, port=PORT)
-
 current_session = {
     "categories": [],
     "found_categories": [],
@@ -103,9 +98,21 @@ def reset_game():
         traceback.print_exc()
         raise
 
+def is_new_day_needed():
+    if not current_session["game_date"]:
+        return True
+    
+    today = datetime.now(timezone.utc).date()
+    game_date = current_session["game_date"].date()
+    return today > game_date
+
 @app.get("/")
 async def root():
     return {"message": "Connections Game API is running", "docs": "/docs"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 @app.get("/api/game")
 async def get_game():
@@ -174,14 +181,6 @@ async def check_selection(selected_words: list[str]):
             status_code=500
         )
 
-def is_new_day_needed():
-    if not current_session["game_date"]:
-        return True
-    
-    today = datetime.now(timezone.utc).date()
-    game_date = current_session["game_date"].date()
-    return today > game_date
-
 @app.get("/api/game_status")
 async def get_game_status():
     try:
@@ -218,7 +217,5 @@ async def get_daily_info():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-    @app.get("/health")
-async def health_check():
-    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
+    print(f"🚀 Starting server on {HOST}:{PORT}")
+    uvicorn.run(app, host=HOST, port=PORT)
