@@ -23,22 +23,3 @@ def get_words_by_category(category_id: int) -> List[str]:
         cur.execute("SELECT word FROM words WHERE category_id = ?", (category_id,))
         rows = cur.fetchall()
         return [row["word"] for row in rows]
-    
-def create_game(user_id: int) -> int:
-    with get_connection() as conn:
-        cur = conn.cursor()
-        cur.execute("INSERT INTO games (user_id, score, errors) VALUES (?, 0, 0)", (user_id,))
-        conn.commit()
-        return cur.lastrowid
-
-def update_game(game_id: int, score: int, errors: int): 
-    with get_connection() as conn: 
-        cur = conn.cursor() 
-        cur.execute( "UPDATE games SET score = ?, errors = ? WHERE game_id = ?", (score, errors, game_id) ) 
-        conn.commit()
-        
-def get_game(game_id: int): 
-    with get_connection() as conn: 
-        cur = conn.cursor() 
-        cur.execute("SELECT * FROM games WHERE game_id = ?", (game_id,)) 
-        return cur.fetchone()
