@@ -104,19 +104,23 @@ def get_user_progress(request: Request):
         if progress_cookie:
             progress_data = json.loads(progress_cookie)
             print(f"📖 Loaded user progress: {progress_data}")
+            # Ensure mistakes field exists
+            if "mistakes" not in progress_data:
+                progress_data["mistakes"] = 0
             return progress_data
         print("📖 No user progress found")
-        return {"found_categories": [], "game_date": None}
+        return {"found_categories": [], "game_date": None, "mistakes": 0}
     except (json.JSONDecodeError, KeyError) as e:
         print(f"❌ Error parsing user progress cookie: {e}")
-        return {"found_categories": [], "game_date": None}
+        return {"found_categories": [], "game_date": None, "mistakes": 0}
 
-def set_user_progress(response: Response, found_categories, game_date):
+def set_user_progress(response: Response, found_categories, game_date, mistakes=0):
     """Set user's progress in cookie"""
     try:
         progress_data = {
             "found_categories": found_categories,
-            "game_date": game_date
+            "game_date": game_date,
+            "mistakes": mistakes  # Добавляем ошибки
         }
         
         response.set_cookie(
@@ -126,7 +130,7 @@ def set_user_progress(response: Response, found_categories, game_date):
             httponly=True,
             samesite="lax"
         )
-        print(f"💾 Saved user progress: {len(found_categories)} categories")
+        print(f"💾 Saved user progress: {len(found_categories)} categories, {mistakes} mistakes")
     except Exception as e:
         print(f"❌ Error setting user progress cookie: {e}")
 
@@ -154,21 +158,23 @@ async def get_game(request: Request):
         user_has_todays_progress = is_same_day(user_progress.get("game_date"), today)
         
         found_categories = user_progress["found_categories"] if user_has_todays_progress else []
+        mistakes = user_progress["mistakes"] if user_has_todays_progress else 0
         
         response_data = {
             "words": daily_game["words"],
             "categories": [{"name": cat.name, "words": cat.words} for cat in daily_game["categories"]],
             "game_date": daily_game["game_date"],
             "found_categories": found_categories,
+            "mistakes": mistakes,  # Добавляем ошибки в ответ
             "remaining": len(daily_game["categories"]) - len(found_categories)
         }
         
-        print(f"📤 Returning game data: {len(response_data['words'])} words, {len(found_categories)} found categories")
+        print(f"📤 Returning game data: {len(response_data['words'])} words, {len(found_categories)} found categories, {mistakes} mistakes")
         
         # Create response and set cookie with user progress
         response = JSONResponse(response_data)
         if user_has_todays_progress:
-            set_user_progress(response, found_categories, today)
+            set_user_progress(response, found_categories, today, mistakes)
         
         return response
         
@@ -195,9 +201,10 @@ async def check_selection(selected_words: list[str], request: Request):
         # Reset progress if it's a new day
         if not is_same_day(user_progress.get("game_date"), today):
             print("🆕 New day detected, resetting progress")
-            user_progress = {"found_categories": [], "game_date": today}
+            user_progress = {"found_categories": [], "game_date": today, "mistakes": 0}
         
         found_categories = user_progress["found_categories"]
+        mistakes = user_progress.get("mistakes", 0)
         
         # Check if selection matches any category
         for category in daily_game["categories"]:
@@ -224,7 +231,7 @@ async def check_selection(selected_words: list[str], request: Request):
                 remaining = len(daily_game["categories"]) - len(found_categories)
                 game_complete = remaining == 0
                 
-                print(f"📊 Progress: {len(found_categories)}/{len(daily_game['categories'])} categories found")
+                print(f"📊 Progress: {len(found_categories)}/{len(daily_game['categories'])} categories found, {mistakes} mistakes")
                 
                 # Create response
                 response_data = {
@@ -235,18 +242,20 @@ async def check_selection(selected_words: list[str], request: Request):
                 }
                 
                 response = JSONResponse(response_data)
-                set_user_progress(response, found_categories, today)
+                set_user_progress(response, found_categories, today, mistakes)
                 
                 return response
 
-        print("❌ No category match found")
+        print("❌ No category match found - adding mistake")
+        mistakes += 1
         response_data = {
             "valid": False,
-            "message": "Эти слова не образуют категорию"
+            "message": "Эти слова не образуют категорию",
+            "mistakes": mistakes  # Возвращаем обновленное количество ошибок
         }
         
         response = JSONResponse(response_data)
-        set_user_progress(response, found_categories, today)
+        set_user_progress(response, found_categories, today, mistakes)
         
         return response
         
@@ -270,9 +279,10 @@ async def get_game_status(request: Request):
         
         # Reset progress if it's a new day
         if not is_same_day(user_progress.get("game_date"), today):
-            user_progress = {"found_categories": [], "game_date": today}
+            user_progress = {"found_categories": [], "game_date": today, "mistakes": 0}
         
         found_categories = user_progress["found_categories"]
+        mistakes = user_progress.get("mistakes", 0)
         remaining = len(daily_game["categories"]) - len(found_categories)
         
         response_data = {
@@ -280,11 +290,12 @@ async def get_game_status(request: Request):
             "total_categories": len(daily_game["categories"]),
             "remaining": remaining,
             "game_date": daily_game["game_date"],
+            "mistakes": mistakes,  # Добавляем ошибки
             "game_complete": remaining == 0
         }
         
         response = JSONResponse(response_data)
-        set_user_progress(response, found_categories, today)
+        set_user_progress(response, found_categories, today, mistakes)
         return response
         
     except Exception as e:
@@ -303,9 +314,10 @@ async def get_daily_info(request: Request):
         
         # Reset progress if it's a new day
         if not is_same_day(user_progress.get("game_date"), today):
-            user_progress = {"found_categories": [], "game_date": today}
+            user_progress = {"found_categories": [], "game_date": today, "mistakes": 0}
         
         found_categories = user_progress["found_categories"]
+        mistakes = user_progress.get("mistakes", 0)
         remaining = len(daily_game["categories"]) - len(found_categories)
         
         response_data = {
@@ -313,11 +325,12 @@ async def get_daily_info(request: Request):
             "current_game_date": daily_game["game_date"],
             "game_complete": remaining == 0,
             "found_count": len(found_categories),
-            "total_categories": len(daily_game["categories"])
+            "total_categories": len(daily_game["categories"]),
+            "mistakes": mistakes  # Добавляем ошибки
         }
         
         response = JSONResponse(response_data)
-        set_user_progress(response, found_categories, today)
+        set_user_progress(response, found_categories, today, mistakes)
         return response
         
     except Exception as e:
@@ -328,7 +341,7 @@ async def get_daily_info(request: Request):
 async def reset_progress(response: Response):
     """Reset user's progress for current day"""
     today = datetime.now(timezone.utc).date().isoformat()
-    set_user_progress(response, [], today)
+    set_user_progress(response, [], today, 0)
     return {"message": "Progress reset successfully"}
 
 if __name__ == "__main__":
