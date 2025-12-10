@@ -1,31 +1,91 @@
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import traceback
 import json
 import random
-import database  # Your database module
-from models import Category  # Your models
+import uuid
+import time
+import database
+from models import Category
 
 app = FastAPI(title="Connections Game API")
 
-# CORS middleware
+YAKT_TIMEZONE = timezone(timedelta(hours=9))
+
+def get_yakt_time():
+    """Получить текущее время в Якутске"""
+    return datetime.now(YAKT_TIMEZONE)
+
+def format_yakt_time():
+    """Форматировать время для логов"""
+    return get_yakt_time().strftime("%Y-%m-%d %H:%M:%S %Z")
+
+def get_user_hash(request: Request):
+    """Получить или создать user_hash для пользователя"""
+    user_hash = request.cookies.get("user_hash")
+    
+    if not user_hash:
+        user_hash = request.headers.get("x-user-hash")
+    
+    if not user_hash:
+        user_hash = f"anon_{uuid.uuid4().hex[:8]}"
+    
+    return user_hash
+
+def log_message(user_hash: str, message: str):
+    """Логировать сообщение с user_hash и временем"""
+    print(f"[{format_yakt_time()}] [USER:{user_hash}] {message}")
+
+def log_error(user_hash: str, message: str, error: Exception = None):
+    """Логировать ошибку с user_hash и временем"""
+    error_msg = f"❌ {message}"
+    if error:
+        error_msg += f": {str(error)}"
+    print(f"[{format_yakt_time()}] [USER:{user_hash}] {error_msg}")
+    if error:
+        traceback.print_exc()
+
+@app.middleware("http")
+async def logging_middleware(request: Request, call_next):
+    user_hash = get_user_hash(request)
+    start_time = time.time()
+    
+    log_message(user_hash, f"→ {request.method} {request.url.path}")
+    
+    response = await call_next(request)
+    
+    process_time = time.time() - start_time
+    log_message(user_hash, f"← {request.method} {request.url.path} - {response.status_code} ({process_time:.3f}s)")
+    
+    if not request.cookies.get("user_hash"):
+        response.set_cookie(
+            key="user_hash",
+            value=user_hash,
+            max_age=365*24*60*60,  # 1 год
+            httponly=True,
+            samesite="lax",
+            secure=False
+        )
+    
+    return response
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000", 
         "http://127.0.0.1:3000",
-        "http://localhost:5173",  # Vite dev server
+        "http://localhost:5173",
         "http://127.0.0.1:5173",
-        "https://tylmus-tylmus-frontend-8a70.twc1.net"
+        "https://tylmus.ru"
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-def get_categories_from_db():
+def get_categories_from_db(user_hash: str):
     """Get categories from your actual database"""
     try:
         db_categories = database.get_categories()
@@ -38,16 +98,16 @@ def get_categories_from_db():
                     Category(name=cat["category_name"], words=words[:4])
                 )
         
-        print(f"📊 Loaded {len(categories)} categories from database")
+        log_message(user_hash, f"📊 Loaded {len(categories)} categories from database")
         return categories
         
     except Exception as e:
-        print(f"❌ Error loading categories from DB: {e}")
-        return generate_fallback_categories()
+        log_error(user_hash, "Error loading categories from DB", e)
+        return generate_fallback_categories(user_hash)
 
-def generate_fallback_categories():
+def generate_fallback_categories(user_hash: str):
     """Fallback categories if database fails"""
-    print("🔄 Using fallback categories")
+    log_message(user_hash, "🔄 Using fallback categories")
     return [
         Category("Фрукты", ["Яблоко", "Апельсин", "Банан", "Виноград"]),
         Category("Транспорт", ["Машина", "Автобус", "Поезд", "Велосипед"]),
@@ -55,24 +115,20 @@ def generate_fallback_categories():
         Category("Животные", ["Собака", "Кошка", "Птица", "Рыба"])
     ]
 
-def create_daily_game():
+def create_daily_game(user_hash: str):
     """Create a daily game - same for everyone today"""
     try:
-        # Use your actual database categories
-        all_categories = get_categories_from_db()
+        all_categories = get_categories_from_db(user_hash)
         
         if len(all_categories) < 4:
-            print("⚠️ Not enough categories from DB, using fallback")
-            all_categories = generate_fallback_categories()
+            log_message(user_hash, "⚠️ Not enough categories from DB, using fallback")
+            all_categories = generate_fallback_categories(user_hash)
         
-        # Use date-based seed for consistent daily game
         today_str = datetime.now(timezone.utc).date().isoformat()
-        random.seed(today_str)  # Same seed for same date
+        random.seed(today_str)
         
-        # SELECT ONLY 4 RANDOM CATEGORIES for the game
         selected_categories = random.sample(all_categories, 4)
         
-        # Combine words from only the 4 selected categories
         all_words = []
         for category in selected_categories:
             all_words.extend(category.words)
@@ -85,75 +141,72 @@ def create_daily_game():
             "game_date": today_str
         }
         
-        print(f"🎮 New daily game created for date: {today_str}")
-        print(f"   📝 {len(all_words)} words and {len(selected_categories)} categories")
+        log_message(user_hash, f"🎮 New daily game created for date: {today_str}")
+        log_message(user_hash, f"   📝 {len(all_words)} words and {len(selected_categories)} categories")
         for category in selected_categories:
-            print(f"      {category.name}: {category.words}")
+            log_message(user_hash, f"      {category.name}: {category.words}")
         
         return game_state
         
     except Exception as e:
-        print(f"❌ Error creating daily game: {e}")
-        traceback.print_exc()
+        log_error(user_hash, "Error creating daily game", e)
         raise
 
-def get_user_progress(request: Request):
+def get_user_progress(request: Request, user_hash: str):
     """Get user's progress from cookie"""
     try:
         progress_cookie = request.cookies.get("user_progress")
         if progress_cookie:
             progress_data = json.loads(progress_cookie)
-            print(f"📖 Loaded user progress: {progress_data}")
-            # Ensure mistakes field exists
+            log_message(user_hash, f"📖 Loaded user progress: {len(progress_data.get('found_categories', []))} categories, {progress_data.get('mistakes', 0)} mistakes")
             if "mistakes" not in progress_data:
                 progress_data["mistakes"] = 0
             return progress_data
-        print("📖 No user progress found")
+        log_message(user_hash, "📖 No user progress found")
         return {"found_categories": [], "game_date": None, "mistakes": 0}
     except (json.JSONDecodeError, KeyError) as e:
-        print(f"❌ Error parsing user progress cookie: {e}")
+        log_error(user_hash, "Error parsing user progress cookie", e)
         return {"found_categories": [], "game_date": None, "mistakes": 0}
 
-def set_user_progress(response: Response, found_categories, game_date, mistakes=0):
+def set_user_progress(response: Response, found_categories, game_date, mistakes=0, user_hash: str = "unknown"):
     """Set user's progress in cookie"""
     try:
         progress_data = {
             "found_categories": found_categories,
             "game_date": game_date,
-            "mistakes": mistakes  # Добавляем ошибки
+            "mistakes": mistakes
         }
         
         response.set_cookie(
             key="user_progress",
             value=json.dumps(progress_data),
-            max_age=86400 * 2,  # 2 days expiration
+            max_age=86400 * 2,
             httponly=True,
             samesite="lax"
         )
-        print(f"💾 Saved user progress: {len(found_categories)} categories, {mistakes} mistakes")
+        log_message(user_hash, f"💾 Saved user progress: {len(found_categories)} categories, {mistakes} mistakes")
     except Exception as e:
-        print(f"❌ Error setting user progress cookie: {e}")
+        log_error(user_hash, "Error setting user progress cookie", e)
 
 def is_same_day(date1, date2):
     """Check if two dates are the same day"""
     return date1 == date2
 
 @app.get("/")
-async def root():
+async def root(request: Request):
+    user_hash = get_user_hash(request)
+    log_message(user_hash, "Root endpoint accessed")
     return {"message": "Connections Game API is running", "docs": "/docs"}
 
 @app.get("/api/game")
 async def get_game(request: Request):
+    user_hash = get_user_hash(request)
+    
     try:
-        print("GET /api/game called")
+        daily_game = create_daily_game(user_hash)
         
-        # Get daily game (same for everyone today)
-        daily_game = create_daily_game()
+        user_progress = get_user_progress(request, user_hash)
         
-        # Get user's personal progress
-        user_progress = get_user_progress(request)
-        
-        # Check if user has progress for today's game
         today = datetime.now(timezone.utc).date().isoformat()
         user_has_todays_progress = is_same_day(user_progress.get("game_date"), today)
         
@@ -165,22 +218,20 @@ async def get_game(request: Request):
             "categories": [{"name": cat.name, "words": cat.words} for cat in daily_game["categories"]],
             "game_date": daily_game["game_date"],
             "found_categories": found_categories,
-            "mistakes": mistakes,  # Добавляем ошибки в ответ
+            "mistakes": mistakes,
             "remaining": len(daily_game["categories"]) - len(found_categories)
         }
         
-        print(f"📤 Returning game data: {len(response_data['words'])} words, {len(found_categories)} found categories, {mistakes} mistakes")
+        log_message(user_hash, f"📤 Returning game data: {len(response_data['words'])} words, {len(found_categories)} found categories, {mistakes} mistakes")
         
-        # Create response and set cookie with user progress
         response = JSONResponse(response_data)
         if user_has_todays_progress:
-            set_user_progress(response, found_categories, today, mistakes)
+            set_user_progress(response, found_categories, today, mistakes, user_hash)
         
         return response
         
     except Exception as e:
-        print(f"❌ Error in /api/game: {e}")
-        traceback.print_exc()
+        log_error(user_hash, "Error in /api/game", e)
         return JSONResponse(
             {"error": f"Internal server error: {str(e)}"}, 
             status_code=500
@@ -188,52 +239,46 @@ async def get_game(request: Request):
 
 @app.post("/api/check_selection")
 async def check_selection(selected_words: list[str], request: Request):
+    user_hash = get_user_hash(request)
+    
     try:
-        print(f"POST /api/check_selection called with: {selected_words}")
+        log_message(user_hash, f"Checking selection: {selected_words}")
         
-        # Get daily game (same for everyone today)
-        daily_game = create_daily_game()
+        daily_game = create_daily_game(user_hash)
         
-        # Get user's current progress
-        user_progress = get_user_progress(request)
+        user_progress = get_user_progress(request, user_hash)
         today = datetime.now(timezone.utc).date().isoformat()
         
-        # Reset progress if it's a new day
         if not is_same_day(user_progress.get("game_date"), today):
-            print("🆕 New day detected, resetting progress")
+            log_message(user_hash, "🆕 New day detected, resetting progress")
             user_progress = {"found_categories": [], "game_date": today, "mistakes": 0}
         
         found_categories = user_progress["found_categories"]
         mistakes = user_progress.get("mistakes", 0)
         
-        # Check if selection matches any category
         for category in daily_game["categories"]:
-            print(f"🔍 Checking category: {category.name} with words: {category.words}")
             if set(selected_words) == set(category.words):
-                print(f"✅ Match found: {category.name}")
+                log_message(user_hash, f"✅ Match found: {category.name}")
                 
-                # Check if category was already found
                 category_already_found = any(
                     found_cat["name"] == category.name 
                     for found_cat in found_categories
                 )
                 
                 if not category_already_found:
-                    # Add to found categories
                     found_categories.append({
                         "name": category.name,
                         "words": selected_words
                     })
-                    print(f"➕ Added to found categories: {category.name}")
+                    log_message(user_hash, f"➕ Added to found categories: {category.name}")
                 else:
-                    print(f"ℹ️ Category already found: {category.name}")
+                    log_message(user_hash, f"ℹ️ Category already found: {category.name}")
 
                 remaining = len(daily_game["categories"]) - len(found_categories)
                 game_complete = remaining == 0
                 
-                print(f"📊 Progress: {len(found_categories)}/{len(daily_game['categories'])} categories found, {mistakes} mistakes")
+                log_message(user_hash, f"📊 Progress: {len(found_categories)}/{len(daily_game['categories'])} categories found, {mistakes} mistakes")
                 
-                # Create response
                 response_data = {
                     "valid": True,
                     "category_name": category.name,
@@ -242,26 +287,25 @@ async def check_selection(selected_words: list[str], request: Request):
                 }
                 
                 response = JSONResponse(response_data)
-                set_user_progress(response, found_categories, today, mistakes)
+                set_user_progress(response, found_categories, today, mistakes, user_hash)
                 
                 return response
 
-        print("❌ No category match found - adding mistake")
+        log_message(user_hash, "❌ No category match found - adding mistake")
         mistakes += 1
         response_data = {
             "valid": False,
             "message": "Эти слова не образуют категорию",
-            "mistakes": mistakes  # Возвращаем обновленное количество ошибок
+            "mistakes": mistakes
         }
         
         response = JSONResponse(response_data)
-        set_user_progress(response, found_categories, today, mistakes)
+        set_user_progress(response, found_categories, today, mistakes, user_hash)
         
         return response
         
     except Exception as e:
-        print(f"💥 Error in /api/check_selection: {e}")
-        traceback.print_exc()
+        log_error(user_hash, "Error in /api/check_selection", e)
         return JSONResponse(
             {"error": f"Internal server error: {str(e)}"}, 
             status_code=500
@@ -269,15 +313,14 @@ async def check_selection(selected_words: list[str], request: Request):
 
 @app.get("/api/game_status")
 async def get_game_status(request: Request):
+    user_hash = get_user_hash(request)
+    
     try:
-        # Get daily game
-        daily_game = create_daily_game()
+        daily_game = create_daily_game(user_hash)
         
-        # Get user's progress
-        user_progress = get_user_progress(request)
+        user_progress = get_user_progress(request, user_hash)
         today = datetime.now(timezone.utc).date().isoformat()
         
-        # Reset progress if it's a new day
         if not is_same_day(user_progress.get("game_date"), today):
             user_progress = {"found_categories": [], "game_date": today, "mistakes": 0}
         
@@ -290,29 +333,28 @@ async def get_game_status(request: Request):
             "total_categories": len(daily_game["categories"]),
             "remaining": remaining,
             "game_date": daily_game["game_date"],
-            "mistakes": mistakes,  # Добавляем ошибки
+            "mistakes": mistakes, 
             "game_complete": remaining == 0
         }
         
         response = JSONResponse(response_data)
-        set_user_progress(response, found_categories, today, mistakes)
+        set_user_progress(response, found_categories, today, mistakes, user_hash)
         return response
         
     except Exception as e:
-        print(f"Error in /api/game_status: {e}")
+        log_error(user_hash, "Error in /api/game_status", e)
         return JSONResponse({"error": str(e)})
 
 @app.get("/api/daily_info")
 async def get_daily_info(request: Request):
+    user_hash = get_user_hash(request)
+    
     try:
-        # Get daily game
-        daily_game = create_daily_game()
+        daily_game = create_daily_game(user_hash)
         
-        # Get user's progress
-        user_progress = get_user_progress(request)
+        user_progress = get_user_progress(request, user_hash)
         today = datetime.now(timezone.utc).date().isoformat()
         
-        # Reset progress if it's a new day
         if not is_same_day(user_progress.get("game_date"), today):
             user_progress = {"found_categories": [], "game_date": today, "mistakes": 0}
         
@@ -326,24 +368,31 @@ async def get_daily_info(request: Request):
             "game_complete": remaining == 0,
             "found_count": len(found_categories),
             "total_categories": len(daily_game["categories"]),
-            "mistakes": mistakes  # Добавляем ошибки
+            "mistakes": mistakes
         }
         
         response = JSONResponse(response_data)
-        set_user_progress(response, found_categories, today, mistakes)
+        set_user_progress(response, found_categories, today, mistakes, user_hash)
         return response
         
     except Exception as e:
-        print(f"Error in /api/daily_info: {e}")
+        log_error(user_hash, "Error in /api/daily_info", e)
         return JSONResponse({"error": str(e)})
 
 @app.post("/api/reset_progress")
-async def reset_progress(response: Response):
+async def reset_progress(request: Request, response: Response):
     """Reset user's progress for current day"""
+    user_hash = get_user_hash(request)
     today = datetime.now(timezone.utc).date().isoformat()
-    set_user_progress(response, [], today, 0)
+    set_user_progress(response, [], today, 0, user_hash)
+    log_message(user_hash, "🔄 User progress reset")
     return {"message": "Progress reset successfully"}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=8000,
+        log_config=None 
+    )
