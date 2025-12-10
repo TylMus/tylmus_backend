@@ -78,7 +78,9 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-        "https://tylmus.ru"
+        "https://tylmus.ru",
+        "https://www.tylmus.ru",
+        "https://tylmus-tylmus-frontend-8a70.twc1.net/"
     ],
     allow_credentials=True,
     allow_methods=["*"],
