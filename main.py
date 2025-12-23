@@ -145,9 +145,9 @@ def create_daily_game(user_hash: str):
         }
         
         log_message(user_hash, f"🎮 New daily game created for date: {today_str}")
-        log_message(user_hash, f"   📝 {len(all_words)} words and {len(selected_categories)} categories")
-        for category in selected_categories:
-            log_message(user_hash, f"      {category.name}: {category.words}")
+        #log_message(user_hash, f"📝 {len(all_words)} words and {len(selected_categories)} categories")
+        #for category in selected_categories:
+        #    log_message(user_hash, f"      {category.name}: {category.words}")
         
         return game_state
         
