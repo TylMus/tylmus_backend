@@ -65,7 +65,7 @@ async def logging_middleware(request: Request, call_next):
             value=user_hash,
             max_age=365*24*60*60,  # 1 год
             httponly=True,
-            samesite="None",
+            samesite="none",
             secure=True,
             domain=".twc1.net"
         )
@@ -185,7 +185,7 @@ def set_user_progress(response: Response, found_categories, game_date, mistakes=
             value=json.dumps(progress_data),
             max_age=86400 * 2,
             httponly=True,
-            samesite="None",
+            samesite="none",
             secure=True,
             domain=".twc1.net"
         )
