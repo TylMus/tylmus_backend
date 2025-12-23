@@ -66,8 +66,7 @@ async def logging_middleware(request: Request, call_next):
             max_age=365*24*60*60,  # 1 год
             httponly=True,
             samesite="none",
-            secure=True,
-            domain=".tylmus.ru" 
+            secure=True
         )
     
     return response
@@ -209,8 +208,7 @@ def set_user_progress(response: Response, found_categories, game_date, mistakes=
             max_age=86400 * 2,
             httponly=True,
             samesite="none",
-            secure=True,
-            domain=".twc1.net"
+            secure=True
         )
         log_message(user_hash, f"💾 Saved user progress: {len(found_categories)} categories, {mistakes} mistakes")
     except Exception as e:
