@@ -161,12 +161,29 @@ def get_user_progress(request: Request, user_hash: str):
         progress_cookie = request.cookies.get("user_progress")
         if progress_cookie:
             progress_data = json.loads(progress_cookie)
-            log_message(user_hash, f"📖 Loaded user progress: {len(progress_data.get('found_categories', []))} categories, {progress_data.get('mistakes', 0)} mistakes")
+            
+            category_colors = ["yellow", "green", "blue", "purple"]
+            found_categories = progress_data.get("found_categories", [])
+            
+            for i, cat in enumerate(found_categories):
+                if isinstance(cat, dict) and "color" not in cat:
+                    cat["color"] = category_colors[i] if i < len(category_colors) else "gray"
+                elif isinstance(cat, str):
+                    found_categories[i] = {
+                        "name": cat,
+                        "words": [],
+                        "color": category_colors[i] if i < len(category_colors) else "gray"
+                    }
+            
             if "mistakes" not in progress_data:
                 progress_data["mistakes"] = 0
+            
+            log_message(user_hash, f"📖 Loaded user progress: {len(found_categories)} categories, {progress_data['mistakes']} mistakes")
             return progress_data
+        
         log_message(user_hash, "📖 No user progress found")
         return {"found_categories": [], "game_date": None, "mistakes": 0}
+    
     except (json.JSONDecodeError, KeyError) as e:
         log_error(user_hash, "Error parsing user progress cookie", e)
         return {"found_categories": [], "game_date": None, "mistakes": 0}
@@ -174,6 +191,12 @@ def get_user_progress(request: Request, user_hash: str):
 def set_user_progress(response: Response, found_categories, game_date, mistakes=0, user_hash: str = "unknown"):
     """Set user's progress in cookie"""
     try:
+        # Добавляем цвета к найденным категориям
+        category_colors = ["yellow", "green", "blue", "purple"]
+        for i, cat in enumerate(found_categories):
+            if "color" not in cat:
+                cat["color"] = category_colors[i] if i < len(category_colors) else "gray"
+        
         progress_data = {
             "found_categories": found_categories,
             "game_date": game_date,
@@ -218,13 +241,31 @@ async def get_game(request: Request):
         found_categories = user_progress["found_categories"] if user_has_todays_progress else []
         mistakes = user_progress["mistakes"] if user_has_todays_progress else 0
         
+        category_colors = ["yellow", "green", "blue", "purple"]
+        categories_with_colors = []
+        
+        for i, cat in enumerate(daily_game["categories"]):
+            color = category_colors[i] if i < len(category_colors) else "gray"
+            categories_with_colors.append({
+                "name": cat.name,
+                "words": cat.words,
+                "color": color
+            })
+        
+        word_color_map = {}
+        for i, cat in enumerate(daily_game["categories"]):
+            color = category_colors[i] if i < len(category_colors) else "gray"
+            for word in cat.words:
+                word_color_map[word] = color
+        
         response_data = {
             "words": daily_game["words"],
-            "categories": [{"name": cat.name, "words": cat.words} for cat in daily_game["categories"]],
+            "categories": categories_with_colors,
             "game_date": daily_game["game_date"],
             "found_categories": found_categories,
             "mistakes": mistakes,
-            "remaining": len(daily_game["categories"]) - len(found_categories)
+            "remaining": len(daily_game["categories"]) - len(found_categories),
+            "word_colors": word_color_map
         }
         
         log_message(user_hash, f"📤 Returning game data: {len(response_data['words'])} words, {len(found_categories)} found categories, {mistakes} mistakes")
@@ -241,7 +282,7 @@ async def get_game(request: Request):
             {"error": f"Internal server error: {str(e)}"}, 
             status_code=500
         )
-
+        
 @app.post("/api/check_selection")
 async def check_selection(selected_words: list[str], request: Request):
     user_hash = get_user_hash(request)
@@ -261,7 +302,17 @@ async def check_selection(selected_words: list[str], request: Request):
         found_categories = user_progress["found_categories"]
         mistakes = user_progress.get("mistakes", 0)
         
-        for category in daily_game["categories"]:
+        # Цвета категорий
+        category_colors = ["yellow", "green", "blue", "purple"]
+        
+        # Создаем мапу: слово → цвет
+        word_color_map = {}
+        for i, cat in enumerate(daily_game["categories"]):
+            color = category_colors[i] if i < len(category_colors) else "gray"
+            for word in cat.words:
+                word_color_map[word] = color
+        
+        for i, category in enumerate(daily_game["categories"]):
             if set(selected_words) == set(category.words):
                 log_message(user_hash, f"✅ Match found: {category.name}")
                 
@@ -273,7 +324,8 @@ async def check_selection(selected_words: list[str], request: Request):
                 if not category_already_found:
                     found_categories.append({
                         "name": category.name,
-                        "words": selected_words
+                        "words": selected_words,
+                        "color": category_colors[i] if i < len(category_colors) else "gray"
                     })
                     log_message(user_hash, f"➕ Added to found categories: {category.name}")
                 else:
@@ -287,6 +339,7 @@ async def check_selection(selected_words: list[str], request: Request):
                 response_data = {
                     "valid": True,
                     "category_name": category.name,
+                    "category_color": category_colors[i] if i < len(category_colors) else "gray",
                     "remaining": remaining,
                     "game_complete": game_complete
                 }
@@ -298,10 +351,18 @@ async def check_selection(selected_words: list[str], request: Request):
 
         log_message(user_hash, "❌ No category match found - adding mistake")
         mistakes += 1
+        
+        # Определяем цвета выбранных слов
+        selected_colors = []
+        for word in selected_words:
+            if word in word_color_map:
+                selected_colors.append(word_color_map[word])
+        
         response_data = {
             "valid": False,
             "message": "Эти слова не образуют категорию",
-            "mistakes": mistakes
+            "mistakes": mistakes,
+            "selected_colors": selected_colors  # Новая: цвета выбранных слов
         }
         
         response = JSONResponse(response_data)
