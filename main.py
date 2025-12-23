@@ -66,8 +66,7 @@ async def logging_middleware(request: Request, call_next):
             max_age=365*24*60*60,  # 1 год
             httponly=True,
             samesite="none",
-            secure=True,
-            domain=".twc1.net"
+            secure=True
         )
     
     return response
