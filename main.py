@@ -66,7 +66,8 @@ async def logging_middleware(request: Request, call_next):
             max_age=365*24*60*60,  # 1 год
             httponly=True,
             samesite="none",
-            secure=True
+            secure=True,
+            domain=".tylmus.ru" 
         )
     
     return response
