@@ -101,7 +101,7 @@ def get_categories_from_db(user_hash: str):
                     Category(name=cat["category_name"], words=words[:4])
                 )
         
-        log_message(user_hash, f"📊 Loaded {len(categories)} categories from database")
+        # log_message(user_hash, f"📊 Loaded {len(categories)} categories from database")
         return categories
         
     except Exception as e:
@@ -185,7 +185,7 @@ def get_user_progress(request: Request, user_hash: str):
         return {"found_categories": [], "game_date": None, "mistakes": 0}
     
     except (json.JSONDecodeError, KeyError) as e:
-        log_error(user_hash, "Error parsing user progress cookie", e)
+        _error(user_hash, "Error parsing user progress cookie", e)
         return {"found_categories": [], "game_date": None, "mistakes": 0}
 
 def set_user_progress(response: Response, found_categories, game_date, mistakes=0, user_hash: str = "unknown"):
@@ -212,7 +212,7 @@ def set_user_progress(response: Response, found_categories, game_date, mistakes=
             secure=True,
             domain=".twc1.net"
         )
-        log_message(user_hash, f"💾 Saved user progress: {len(found_categories)} categories, {mistakes} mistakes")
+        #log_message(user_hash, f"💾 Saved user progress: {len(found_categories)} categories, {mistakes} mistakes")
     except Exception as e:
         log_error(user_hash, "Error setting user progress cookie", e)
 
@@ -268,7 +268,7 @@ async def get_game(request: Request):
             "word_colors": word_color_map
         }
         
-        log_message(user_hash, f"📤 Returning game data: {len(response_data['words'])} words, {len(found_categories)} found categories, {mistakes} mistakes")
+        #log_message(user_hash, f"📤 Returning game data: {len(response_data['words'])} words, {len(found_categories)} found categories, {mistakes} mistakes")
         
         response = JSONResponse(response_data)
         if user_has_todays_progress:
@@ -314,7 +314,7 @@ async def check_selection(selected_words: list[str], request: Request):
         
         for i, category in enumerate(daily_game["categories"]):
             if set(selected_words) == set(category.words):
-                log_message(user_hash, f"✅ Match found: {category.name}")
+                #log_message(user_hash, f"✅ Match found: {category.name}")
                 
                 category_already_found = any(
                     found_cat["name"] == category.name 
@@ -327,14 +327,14 @@ async def check_selection(selected_words: list[str], request: Request):
                         "words": selected_words,
                         "color": category_colors[i] if i < len(category_colors) else "gray"
                     })
-                    log_message(user_hash, f"➕ Added to found categories: {category.name}")
+                    #log_message(user_hash, f"➕ Added to found categories: {category.name}")
                 else:
                     log_message(user_hash, f"ℹ️ Category already found: {category.name}")
 
                 remaining = len(daily_game["categories"]) - len(found_categories)
                 game_complete = remaining == 0
                 
-                log_message(user_hash, f"📊 Progress: {len(found_categories)}/{len(daily_game['categories'])} categories found, {mistakes} mistakes")
+                #log_message(user_hash, f"📊 Progress: {len(found_categories)}/{len(daily_game['categories'])} categories found, {mistakes} mistakes")
                 
                 response_data = {
                     "valid": True,
