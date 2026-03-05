@@ -9,6 +9,8 @@ import uuid
 import time
 import database
 from models import Category
+from leaderboard import init_leaderboard_table, submit_score, get_today_leaderboard, get_user_entry
+from profanity import contains_profanity
 
 app = FastAPI(title="Connections Game API")
 
@@ -453,7 +455,53 @@ async def reset_progress(request: Request, response: Response):
     set_user_progress(response, [], today, 0, user_hash)
     log_message(user_hash, "🔄 User progress reset")
     return {"message": "Progress reset successfully"}
+@app.on_event("startup")
+async def startup():
+    init_leaderboard_table()
+    print("✅ Leaderboard table initialized")
+@app.post("/api/leaderboard/submit")
+async def leaderboard_submit(request: Request, nickname: str):
+    user_hash = get_user_hash(request)
+    log_message(user_hash, f"Leaderboard submit attempt: nickname='{nickname}'")
 
+    # Validate nickname
+    if not nickname or len(nickname) < 2 or len(nickname) > 12:
+        return JSONResponse({"error": "Никнейм должен быть от 2 до 12 символов"}, status_code=400)
+    if contains_profanity(nickname):
+        return JSONResponse({"error": "Никнейм содержит недопустимые слова"}, status_code=400)
+
+    # Check if game completed today
+    today = datetime.now(timezone.utc).date().isoformat()
+    user_progress = get_user_progress(request, user_hash)
+    if not is_same_day(user_progress.get("game_date"), today):
+        return JSONResponse({"error": "Игра ещё не начата сегодня"}, status_code=400)
+
+    # Get mistakes from progress
+    mistakes = user_progress.get("mistakes", 0)
+    found_count = len(user_progress.get("found_categories", []))
+    if found_count < 4:
+        return JSONResponse({"error": "Игра не завершена"}, status_code=400)
+
+    # Submit to leaderboard
+    success = submit_score(today, user_hash, nickname, mistakes)
+    if not success:
+        return JSONResponse({"error": "Вы уже отправляли результат сегодня"}, status_code=400)
+
+    log_message(user_hash, f"✅ Leaderboard entry added: mistakes={mistakes}")
+    return {"success": True, "message": "Результат добавлен в таблицу лидеров"}
+
+@app.get("/api/leaderboard/today")
+async def leaderboard_today(request: Request):
+    user_hash = get_user_hash(request)
+    today = datetime.now(timezone.utc).date().isoformat()
+
+    entries = get_today_leaderboard(today)
+    user_entry = get_user_entry(today, user_hash)
+
+    return {
+        "entries": entries,
+        "user_entry": user_entry
+    }
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
