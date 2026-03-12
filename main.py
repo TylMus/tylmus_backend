@@ -20,6 +20,10 @@ def get_yakt_time():
     """Получить текущее время в Якутске"""
     return datetime.now(YAKT_TIMEZONE)
 
+def get_yakt_date_str():
+    """Получить текущую дату в Якутске в формате YYYY-MM-DD"""
+    return get_yakt_time().date().isoformat()
+
 def format_yakt_time():
     """Форматировать время для логов"""
     return get_yakt_time().strftime("%Y-%m-%d %H:%M:%S %Z")
@@ -129,7 +133,7 @@ def create_daily_game(user_hash: str):
             log_message(user_hash, "⚠️ Not enough categories from DB, using fallback")
             all_categories = generate_fallback_categories(user_hash)
         
-        today_str = datetime.now(timezone.utc).date().isoformat()
+        today_str = get_yakt_date_str()
         random.seed(today_str)
         
         selected_categories = random.sample(all_categories, 4)
@@ -237,7 +241,7 @@ async def get_game(request: Request):
         
         user_progress = get_user_progress(request, user_hash)
         
-        today = datetime.now(timezone.utc).date().isoformat()
+        today = get_yakt_date_str()
         user_has_todays_progress = is_same_day(user_progress.get("game_date"), today)
         
         found_categories = user_progress["found_categories"] if user_has_todays_progress else []
@@ -295,7 +299,7 @@ async def check_selection(selected_words: list[str], request: Request):
         daily_game = create_daily_game(user_hash)
         
         user_progress = get_user_progress(request, user_hash)
-        today = datetime.now(timezone.utc).date().isoformat()
+        today = get_yakt_date_str()
         
         if not is_same_day(user_progress.get("game_date"), today):
             log_message(user_hash, "🆕 New day detected, resetting progress")
@@ -387,7 +391,7 @@ async def get_game_status(request: Request):
         daily_game = create_daily_game(user_hash)
         
         user_progress = get_user_progress(request, user_hash)
-        today = datetime.now(timezone.utc).date().isoformat()
+        today = get_yakt_date_str()
         
         if not is_same_day(user_progress.get("game_date"), today):
             user_progress = {"found_categories": [], "game_date": today, "mistakes": 0}
@@ -421,7 +425,7 @@ async def get_daily_info(request: Request):
         daily_game = create_daily_game(user_hash)
         
         user_progress = get_user_progress(request, user_hash)
-        today = datetime.now(timezone.utc).date().isoformat()
+        today = get_yakt_date_str()
         
         if not is_same_day(user_progress.get("game_date"), today):
             user_progress = {"found_categories": [], "game_date": today, "mistakes": 0}
@@ -451,7 +455,7 @@ async def get_daily_info(request: Request):
 async def reset_progress(request: Request, response: Response):
     """Reset user's progress for current day"""
     user_hash = get_user_hash(request)
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = get_yakt_date_str()
     set_user_progress(response, [], today, 0, user_hash)
     log_message(user_hash, "🔄 User progress reset")
     return {"message": "Progress reset successfully"}
@@ -471,7 +475,7 @@ async def leaderboard_submit(request: Request, nickname: str):
         return JSONResponse({"error": "Никнейм содержит недопустимые слова"}, status_code=400)
 
     # Check if game completed today
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = get_yakt_date_str()
     user_progress = get_user_progress(request, user_hash)
     if not is_same_day(user_progress.get("game_date"), today):
         return JSONResponse({"error": "Игра ещё не начата сегодня"}, status_code=400)
@@ -493,15 +497,10 @@ async def leaderboard_submit(request: Request, nickname: str):
 @app.get("/api/leaderboard/today")
 async def leaderboard_today(request: Request):
     user_hash = get_user_hash(request)
-    today = datetime.now(timezone.utc).date().isoformat()
-
+    today = get_yakt_date_str()
     entries = get_today_leaderboard(today)
     user_entry = get_user_entry(today, user_hash)
-
-    return {
-        "entries": entries,
-        "user_entry": user_entry
-    }
+    return {"entries": entries, "user_entry": user_entry}
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
