@@ -183,18 +183,27 @@ def get_user_progress(request: Request, user_hash: str):
             
             if "mistakes" not in progress_data:
                 progress_data["mistakes"] = 0
+            if "started_at" not in progress_data:
+                progress_data["started_at"] = get_yakt_time().isoformat()
             
             log_message(user_hash, f"📖 Loaded user progress: {len(found_categories)} categories, {progress_data['mistakes']} mistakes")
             return progress_data
         
         log_message(user_hash, "📖 No user progress found")
-        return {"found_categories": [], "game_date": None, "mistakes": 0}
+        return {"found_categories": [], "game_date": None, "mistakes": 0, "started_at": None}
     
     except (json.JSONDecodeError, KeyError) as e:
         _error(user_hash, "Error parsing user progress cookie", e)
-        return {"found_categories": [], "game_date": None, "mistakes": 0}
+        return {"found_categories": [], "game_date": None, "mistakes": 0, "started_at": None}
 
-def set_user_progress(response: Response, found_categories, game_date, mistakes=0, user_hash: str = "unknown"):
+def set_user_progress(
+    response: Response,
+    found_categories,
+    game_date,
+    mistakes=0,
+    user_hash: str = "unknown",
+    started_at: str = None
+):
     """Set user's progress in cookie"""
     try:
         # Добавляем цвета к найденным категориям
@@ -206,7 +215,8 @@ def set_user_progress(response: Response, found_categories, game_date, mistakes=
         progress_data = {
             "found_categories": found_categories,
             "game_date": game_date,
-            "mistakes": mistakes
+            "mistakes": mistakes,
+            "started_at": started_at or get_yakt_time().isoformat()
         }
         
         response.set_cookie(
@@ -278,7 +288,14 @@ async def get_game(request: Request):
         
         response = JSONResponse(response_data)
         if user_has_todays_progress:
-            set_user_progress(response, found_categories, today, mistakes, user_hash)
+            set_user_progress(
+                response,
+                found_categories,
+                today,
+                mistakes,
+                user_hash,
+                user_progress.get("started_at")
+            )
         
         return response
         
@@ -303,7 +320,12 @@ async def check_selection(selected_words: list[str], request: Request):
         
         if not is_same_day(user_progress.get("game_date"), today):
             log_message(user_hash, "🆕 New day detected, resetting progress")
-            user_progress = {"found_categories": [], "game_date": today, "mistakes": 0}
+            user_progress = {
+                "found_categories": [],
+                "game_date": today,
+                "mistakes": 0,
+                "started_at": get_yakt_time().isoformat()
+            }
         
         found_categories = user_progress["found_categories"]
         mistakes = user_progress.get("mistakes", 0)
@@ -351,7 +373,14 @@ async def check_selection(selected_words: list[str], request: Request):
                 }
                 
                 response = JSONResponse(response_data)
-                set_user_progress(response, found_categories, today, mistakes, user_hash)
+                set_user_progress(
+                    response,
+                    found_categories,
+                    today,
+                    mistakes,
+                    user_hash,
+                    user_progress.get("started_at")
+                )
                 
                 return response
 
@@ -372,7 +401,14 @@ async def check_selection(selected_words: list[str], request: Request):
         }
         
         response = JSONResponse(response_data)
-        set_user_progress(response, found_categories, today, mistakes, user_hash)
+        set_user_progress(
+            response,
+            found_categories,
+            today,
+            mistakes,
+            user_hash,
+            user_progress.get("started_at")
+        )
         
         return response
         
@@ -394,7 +430,12 @@ async def get_game_status(request: Request):
         today = get_yakt_date_str()
         
         if not is_same_day(user_progress.get("game_date"), today):
-            user_progress = {"found_categories": [], "game_date": today, "mistakes": 0}
+            user_progress = {
+                "found_categories": [],
+                "game_date": today,
+                "mistakes": 0,
+                "started_at": get_yakt_time().isoformat()
+            }
         
         found_categories = user_progress["found_categories"]
         mistakes = user_progress.get("mistakes", 0)
@@ -410,7 +451,14 @@ async def get_game_status(request: Request):
         }
         
         response = JSONResponse(response_data)
-        set_user_progress(response, found_categories, today, mistakes, user_hash)
+        set_user_progress(
+            response,
+            found_categories,
+            today,
+            mistakes,
+            user_hash,
+            user_progress.get("started_at")
+        )
         return response
         
     except Exception as e:
@@ -428,7 +476,12 @@ async def get_daily_info(request: Request):
         today = get_yakt_date_str()
         
         if not is_same_day(user_progress.get("game_date"), today):
-            user_progress = {"found_categories": [], "game_date": today, "mistakes": 0}
+            user_progress = {
+                "found_categories": [],
+                "game_date": today,
+                "mistakes": 0,
+                "started_at": get_yakt_time().isoformat()
+            }
         
         found_categories = user_progress["found_categories"]
         mistakes = user_progress.get("mistakes", 0)
@@ -444,7 +497,14 @@ async def get_daily_info(request: Request):
         }
         
         response = JSONResponse(response_data)
-        set_user_progress(response, found_categories, today, mistakes, user_hash)
+        set_user_progress(
+            response,
+            found_categories,
+            today,
+            mistakes,
+            user_hash,
+            user_progress.get("started_at")
+        )
         return response
         
     except Exception as e:
@@ -456,7 +516,7 @@ async def reset_progress(request: Request, response: Response):
     """Reset user's progress for current day"""
     user_hash = get_user_hash(request)
     today = get_yakt_date_str()
-    set_user_progress(response, [], today, 0, user_hash)
+    set_user_progress(response, [], today, 0, user_hash, get_yakt_time().isoformat())
     log_message(user_hash, "🔄 User progress reset")
     return {"message": "Progress reset successfully"}
 @app.on_event("startup")
@@ -486,13 +546,35 @@ async def leaderboard_submit(request: Request, nickname: str):
     if found_count < 4:
         return JSONResponse({"error": "Игра не завершена"}, status_code=400)
 
+    # Calculate points from mistakes + play duration.
+    started_at_raw = user_progress.get("started_at")
+    duration_seconds = 0
+    if started_at_raw:
+        try:
+            started_at = datetime.fromisoformat(started_at_raw)
+            duration_seconds = max(0, int((get_yakt_time() - started_at).total_seconds()))
+        except ValueError:
+            duration_seconds = 0
+
+    mistake_penalty = mistakes * 250
+    time_penalty = duration_seconds // 6  # 10 points per minute
+    points = max(0, 5000 - mistake_penalty - time_penalty)
+
     # Submit to leaderboard
-    success = submit_score(today, user_hash, nickname, mistakes)
+    success = submit_score(today, user_hash, nickname, mistakes, duration_seconds, points)
     if not success:
         return JSONResponse({"error": "Вы уже отправляли результат сегодня"}, status_code=400)
 
-    log_message(user_hash, f"✅ Leaderboard entry added: mistakes={mistakes}")
-    return {"success": True, "message": "Результат добавлен в таблицу лидеров"}
+    log_message(
+        user_hash,
+        f"✅ Leaderboard entry added: points={points}, mistakes={mistakes}, duration={duration_seconds}s"
+    )
+    return {
+        "success": True,
+        "message": "Результат добавлен в таблицу лидеров",
+        "points": points,
+        "duration_seconds": duration_seconds
+    }
 
 @app.get("/api/leaderboard/today")
 async def leaderboard_today(request: Request):
