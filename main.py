@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 import traceback
 import json
 import random
@@ -134,14 +134,27 @@ def create_daily_game(user_hash: str):
             all_categories = generate_fallback_categories(user_hash)
         
         today_str = get_yakt_date_str()
-        random.seed(today_str)
-        
-        selected_categories = random.sample(all_categories, 4)
+
+        # Pick 4 categories sequentially (first 4 today, next 4 tomorrow, ...)
+        # based on a fixed epoch so the schedule is stable across restarts.
+        if len(all_categories) == 4:
+            selected_categories = all_categories
+        else:
+            epoch = date(2025, 1, 1)
+            today_date = date.fromisoformat(today_str)
+            day_index = max(0, (today_date - epoch).days)
+            start = (day_index * 4) % len(all_categories)
+            selected_categories = [
+                all_categories[(start + i) % len(all_categories)]
+                for i in range(4)
+            ]
         
         all_words = []
         for category in selected_categories:
             all_words.extend(category.words)
         
+        # Keep deterministic word order per day (but not random categories).
+        random.seed(today_str)
         random.shuffle(all_words)
         
         game_state = {

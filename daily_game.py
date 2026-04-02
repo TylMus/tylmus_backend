@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from typing import List
 import hashlib
 import random
@@ -27,23 +27,32 @@ class DailyGameGenerator:
         return self._current_categories
 
     def _generate_deterministic_categories(self, date_key: str) -> List[Category]:
-        seed = int(hashlib.md5(date_key.encode()).hexdigest()[:8], 16)
-        random.seed(seed)
-        
         all_categories = database.get_categories()
-        
+
+        # Sequential 4 categories per day, stable across restarts.
         if len(all_categories) >= 4:
-            selected_categories = random.sample(all_categories, 4)
-            
-            categories = []
+            if len(all_categories) == 4:
+                selected_categories = all_categories
+            else:
+                epoch = date(2025, 1, 1)
+                day_index = max(0, (date.fromisoformat(date_key) - epoch).days)
+                start = (day_index * 4) % len(all_categories)
+                selected_categories = [
+                    all_categories[(start + i) % len(all_categories)]
+                    for i in range(4)
+                ]
+
+            categories: List[Category] = []
             for cat_info in selected_categories:
                 words = database.get_words_by_category(cat_info["category_id"])
                 if len(words) >= 4:
-                    categories.append(Category(
-                        name=cat_info["category_name"], 
-                        words=words[:4]
-                    ))
-            
+                    categories.append(
+                        Category(
+                            name=cat_info["category_name"],
+                            words=words[:4],
+                        )
+                    )
+
             if len(categories) == 4:
                 return categories
         

@@ -13,7 +13,8 @@ def get_connection():
 def get_categories() -> List[Dict[str, Any]]:
     with get_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT category_id, category_name FROM categories")
+        # Stable ordering is important for deterministic daily selection.
+        cur.execute("SELECT category_id, category_name FROM categories ORDER BY category_id ASC")
         rows = cur.fetchall()
         return [dict(row) for row in rows]
 
