@@ -135,12 +135,13 @@ def create_daily_game(user_hash: str):
         
         today_str = get_yakt_date_str()
 
-        # Pick 4 categories sequentially (first 4 today, next 4 tomorrow, ...)
-        # based on a fixed epoch so the schedule is stable across restarts.
+        # Pick 4 categories sequentially (first 4 on rotation day 1, next 4 on day 2, ...).
+        # Rotation day 1 is persisted in DB on first run.
         if len(all_categories) == 4:
             selected_categories = all_categories
         else:
-            epoch = date(2025, 1, 1)
+            rotation_start_str = database.get_rotation_start_date(today_str)
+            epoch = date.fromisoformat(rotation_start_str)
             today_date = date.fromisoformat(today_str)
             day_index = max(0, (today_date - epoch).days)
             start = (day_index * 4) % len(all_categories)

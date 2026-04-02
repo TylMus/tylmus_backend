@@ -1,9 +1,9 @@
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, timedelta, date
 from typing import List
-import hashlib
-import random
 import database
 from models import Category
+
+YAKT_TIMEZONE = timezone(timedelta(hours=9))
 
 class DailyGameGenerator:
     def __init__(self):
@@ -11,7 +11,8 @@ class DailyGameGenerator:
         self._current_date = None
 
     def get_today_date_key(self) -> str:
-        return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        # Day rollover is based on Yakutsk local time (UTC+9).
+        return datetime.now(YAKT_TIMEZONE).strftime("%Y-%m-%d")
 
     def get_daily_categories(self) -> List[Category]:
         today_key = self.get_today_date_key()
@@ -29,12 +30,13 @@ class DailyGameGenerator:
     def _generate_deterministic_categories(self, date_key: str) -> List[Category]:
         all_categories = database.get_categories()
 
-        # Sequential 4 categories per day, stable across restarts.
+        # Sequential 4 categories per day.
         if len(all_categories) >= 4:
             if len(all_categories) == 4:
                 selected_categories = all_categories
             else:
-                epoch = date(2025, 1, 1)
+                rotation_start_str = database.get_rotation_start_date(date_key)
+                epoch = date.fromisoformat(rotation_start_str)
                 day_index = max(0, (date.fromisoformat(date_key) - epoch).days)
                 start = (day_index * 4) % len(all_categories)
                 selected_categories = [

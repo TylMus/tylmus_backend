@@ -24,3 +24,30 @@ def get_words_by_category(category_id: int) -> List[str]:
         cur.execute("SELECT word FROM words WHERE category_id = ?", (category_id,))
         rows = cur.fetchall()
         return [row["word"] for row in rows]
+
+
+def get_rotation_start_date(default_date: str) -> str:
+    """
+    Return persisted rotation start date.
+    On first call creates settings table and stores default_date.
+    """
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS game_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
+        cur.execute(
+            "INSERT OR IGNORE INTO game_settings (key, value) VALUES (?, ?)",
+            ("rotation_start_date", default_date),
+        )
+        cur.execute(
+            "SELECT value FROM game_settings WHERE key = ?",
+            ("rotation_start_date",),
+        )
+        row = cur.fetchone()
+        return row["value"] if row else default_date
