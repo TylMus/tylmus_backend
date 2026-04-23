@@ -10,22 +10,19 @@ EN_BANNED = {
     "bastard", "damn", "hell", "nigger", "faggot", "slut", "whore"
 }
 
-# Russian profanity (mat)
 RU_BANNED = {
     "хуй", "пизда", "еблан", "ебать", "блядь", "пидор", "гандон",
     "мудак", "залупа", "шлюха", "петух", "манда", "пизд", "хуе",
     "ебло", "срака", "говно", "нахуй", "пох", "хер"
 }
 
-# Yakut profanity (common offensive words – to be extended as needed)
 SAKHA_BANNED = {
-    "кыыс",   # (could be offensive in context)
-    "сиикэй", 
+    "абас",
+    "эмэьэ", 
     "баабыр",
     "дьаабы"
 }
 
-# Combine all banned words (lowercase)
 BANNED_WORDS = EN_BANNED.union(RU_BANNED).union(SAKHA_BANNED)
 
 def contains_profanity(nickname: str) -> bool:
@@ -35,7 +32,6 @@ def contains_profanity(nickname: str) -> bool:
     """
     nickname_lower = nickname.lower()
     for word in BANNED_WORDS:
-        # regex with word boundaries
         pattern = r'\b' + re.escape(word) + r'\b'
         if re.search(pattern, nickname_lower):
             return True

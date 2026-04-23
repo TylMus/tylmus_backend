@@ -20,7 +20,6 @@ def init_leaderboard_table():
             )
         """)
 
-        # Backward-compatible migration for existing tables
         cursor = conn.execute("PRAGMA table_info(leaderboard)")
         existing_columns = {row[1] for row in cursor.fetchall()}
         if "duration_seconds" not in existing_columns:
