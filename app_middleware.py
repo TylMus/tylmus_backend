@@ -3,6 +3,7 @@ import time
 
 from fastapi import FastAPI, Request
 
+from app_settings import COOKIE_DOMAIN
 from http_logging import get_user_hash, log_message
 
 
@@ -19,15 +20,17 @@ def setup_request_logging_middleware(app: FastAPI) -> None:
             f"← {request.method} {request.url.path} - {response.status_code} ({process_time:.3f}s)",
         )
         if not request.cookies.get("user_hash"):
-            response.set_cookie(
-                key="user_hash",
-                value=user_hash,
-                max_age=365 * 24 * 60 * 60,
-                httponly=True,
-                samesite="none",
-                secure=True,
-                domain=".twc1.net",
-            )
+            kwargs = {
+                "key": "user_hash",
+                "value": user_hash,
+                "max_age": 365 * 24 * 60 * 60,
+                "httponly": True,
+                "samesite": "none",
+                "secure": True,
+            }
+            if COOKIE_DOMAIN:
+                kwargs["domain"] = COOKIE_DOMAIN
+            response.set_cookie(**kwargs)
         return response
 
 

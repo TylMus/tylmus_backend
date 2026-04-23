@@ -3,6 +3,7 @@ from typing import Optional
 
 from fastapi import Request, Response
 
+from app_settings import COOKIE_DOMAIN
 from http_logging import log_error, log_message
 from timezone_yakt import get_yakt_time
 
@@ -65,15 +66,17 @@ def set_user_progress(
             "started_at": started_at or get_yakt_time().isoformat(),
         }
 
-        response.set_cookie(
-            key="user_progress",
-            value=json.dumps(progress_data),
-            max_age=86400 * 2,
-            httponly=True,
-            samesite="none",
-            secure=True,
-            domain=".twc1.net",
-        )
+        kwargs = {
+            "key": "user_progress",
+            "value": json.dumps(progress_data),
+            "max_age": 86400 * 2,
+            "httponly": True,
+            "samesite": "none",
+            "secure": True,
+        }
+        if COOKIE_DOMAIN:
+            kwargs["domain"] = COOKIE_DOMAIN
+        response.set_cookie(**kwargs)
     except Exception as e:
         log_error(user_hash, "Error setting user progress cookie", e)
 
