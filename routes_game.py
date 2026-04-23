@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Body, Request, Response
 from fastapi.responses import JSONResponse
 
 from daily_game_service import create_daily_game
@@ -72,7 +72,10 @@ async def get_game(request: Request):
 
 
 @router.post("/api/check_selection")
-async def check_selection(selected_words: list, request: Request):
+async def check_selection(
+    request: Request,
+    selected_words: list[str] = Body(...),
+):
     user_hash = get_user_hash(request)
     try:
         log_message(user_hash, f"Checking selection: {selected_words}")
