@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import Request, Response
 
-from app_settings import COOKIE_DOMAIN
+from app_settings import COOKIE_DOMAIN, COOKIE_SAMESITE, COOKIE_SECURE
 from http_logging import log_error, log_message
 from timezone_yakt import get_yakt_time
 
@@ -71,8 +71,8 @@ def set_user_progress(
             "value": json.dumps(progress_data),
             "max_age": 86400 * 2,
             "httponly": True,
-            "samesite": "none",
-            "secure": True,
+            "samesite": COOKIE_SAMESITE,
+            "secure": COOKIE_SECURE,
         }
         if COOKIE_DOMAIN:
             kwargs["domain"] = COOKIE_DOMAIN

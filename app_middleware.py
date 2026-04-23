@@ -3,7 +3,7 @@ import time
 
 from fastapi import FastAPI, Request
 
-from app_settings import COOKIE_DOMAIN
+from app_settings import COOKIE_DOMAIN, COOKIE_SAMESITE, COOKIE_SECURE
 from http_logging import get_user_hash, log_message
 
 
@@ -25,8 +25,8 @@ def setup_request_logging_middleware(app: FastAPI) -> None:
                 "value": user_hash,
                 "max_age": 365 * 24 * 60 * 60,
                 "httponly": True,
-                "samesite": "none",
-                "secure": True,
+                "samesite": COOKIE_SAMESITE,
+                "secure": COOKIE_SECURE,
             }
             if COOKIE_DOMAIN:
                 kwargs["domain"] = COOKIE_DOMAIN
