@@ -53,7 +53,7 @@ def submit_score(
 
 def get_today_leaderboard(game_date: str) -> List[Dict[str, Any]]:
     """
-    Retrieve today's leaderboard sorted by points (desc), then submission time (asc).
+    Retrieve today's leaderboard sorted by points (asc), then submission time (asc).
     """
     with get_connection() as conn:
         conn.row_factory = sqlite3.Row
@@ -61,7 +61,7 @@ def get_today_leaderboard(game_date: str) -> List[Dict[str, Any]]:
             SELECT nickname, mistakes, duration_seconds, points, submitted_at
             FROM leaderboard
             WHERE game_date = ?
-            ORDER BY points DESC, submitted_at ASC
+            ORDER BY points ASC, submitted_at ASC
         """, (game_date,))
         rows = cursor.fetchall()
         return [dict(row) for row in rows]

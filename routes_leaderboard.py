@@ -47,9 +47,9 @@ async def leaderboard_submit(request: Request, nickname: str):
         except ValueError:
             duration_seconds = 0
 
-    mistake_penalty = mistakes * 250
-    time_penalty = duration_seconds // 6
-    points = max(0, 5000 - mistake_penalty - time_penalty)
+    # 1 second = 1 point, multiplied by (mistakes + 1).
+    multiplier = max(0, mistakes) + 1
+    points = max(0, duration_seconds * multiplier)
 
     success = submit_score(today, user_hash, nickname, mistakes, duration_seconds, points)
     if not success:
