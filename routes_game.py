@@ -51,6 +51,8 @@ async def get_game(request: Request):
             "remaining": len(daily_game["categories"]) - len(found_categories),
             "word_colors": word_color_map,
         }
+        if user_has_todays_progress:
+            response_data["started_at"] = user_progress.get("started_at")
 
         response = JSONResponse(response_data)
         if user_has_todays_progress:
@@ -89,7 +91,7 @@ async def check_selection(
                 "found_categories": [],
                 "game_date": today,
                 "mistakes": 0,
-                "started_at": get_yakt_time().isoformat(),
+                "started_at": None,
             }
 
         found_categories = user_progress["found_categories"]
@@ -181,7 +183,7 @@ async def get_game_status(request: Request):
                 "found_categories": [],
                 "game_date": today,
                 "mistakes": 0,
-                "started_at": get_yakt_time().isoformat(),
+                "started_at": None,
             }
 
         found_categories = user_progress["found_categories"]
@@ -224,7 +226,7 @@ async def get_daily_info(request: Request):
                 "found_categories": [],
                 "game_date": today,
                 "mistakes": 0,
-                "started_at": get_yakt_time().isoformat(),
+                "started_at": None,
             }
 
         found_categories = user_progress["found_categories"]
@@ -254,10 +256,52 @@ async def get_daily_info(request: Request):
         return JSONResponse({"error": str(e)})
 
 
+@router.post("/api/start_play_session")
+async def start_play_session(request: Request):
+    """Record play start time on first word-card interaction; idempotent for the rest of the day."""
+    user_hash = get_user_hash(request)
+    try:
+        user_progress = get_user_progress(request, user_hash)
+        today = get_yakt_date_str()
+
+        if not is_same_day(user_progress.get("game_date"), today):
+            user_progress = {
+                "found_categories": [],
+                "game_date": today,
+                "mistakes": 0,
+                "started_at": None,
+            }
+
+        existing = user_progress.get("started_at")
+        if existing:
+            return JSONResponse({"started_at": existing})
+
+        new_started = get_yakt_time().isoformat()
+        found_categories = user_progress.get("found_categories", [])
+        mistakes = user_progress.get("mistakes", 0)
+
+        response = JSONResponse({"started_at": new_started})
+        set_user_progress(
+            response,
+            found_categories,
+            today,
+            mistakes,
+            user_hash,
+            new_started,
+        )
+        return response
+    except Exception as e:
+        log_error(user_hash, "Error in /api/start_play_session", e)
+        return JSONResponse(
+            {"error": f"Internal server error: {str(e)}"},
+            status_code=500,
+        )
+
+
 @router.post("/api/reset_progress")
 async def reset_progress(request: Request, response: Response):
     user_hash = get_user_hash(request)
     today = get_yakt_date_str()
-    set_user_progress(response, [], today, 0, user_hash, get_yakt_time().isoformat())
+    set_user_progress(response, [], today, 0, user_hash, None)
     log_message(user_hash, "🔄 User progress reset")
     return {"message": "Progress reset successfully"}

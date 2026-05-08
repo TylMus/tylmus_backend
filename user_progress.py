@@ -5,7 +5,6 @@ from fastapi import Request, Response
 
 from app_settings import COOKIE_DOMAIN, COOKIE_SAMESITE, COOKIE_SECURE
 from http_logging import log_error, log_message
-from timezone_yakt import get_yakt_time
 
 
 def get_user_progress(request: Request, user_hash: str) -> dict:
@@ -28,8 +27,6 @@ def get_user_progress(request: Request, user_hash: str) -> dict:
 
             if "mistakes" not in progress_data:
                 progress_data["mistakes"] = 0
-            if "started_at" not in progress_data:
-                progress_data["started_at"] = get_yakt_time().isoformat()
 
             log_message(
                 user_hash,
@@ -63,7 +60,7 @@ def set_user_progress(
             "found_categories": found_categories,
             "game_date": game_date,
             "mistakes": mistakes,
-            "started_at": started_at or get_yakt_time().isoformat(),
+            "started_at": started_at,
         }
 
         kwargs = {
